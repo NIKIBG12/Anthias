@@ -1,0 +1,100 @@
+name: Custom x86 Images
+
+# Builds x86 anthias-server / anthias-viewer images from the pushed branch
+# and publishes them under this repository owner's GHCR namespace
+# (ghcr.io/<owner>/anthias-<service>:x86 plus an immutable
+# <short-sha>-x86 tag), so a fork's build can run on a device via
+# bin/use_custom_images.sh without compiling there. The canonical images
+# are built and published by docker-build.yaml; this workflow never runs
+# in the upstream repository.
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: custom-x86-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository != 'Screenly/Anthias'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.9.17'
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install --group docker-image-builder
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+
+      - name: Create and use dedicated builder
+        run: |
+          docker buildx create --use --name multiarch-builder
+          docker buildx inspect --bootstrap
+
+      # Loads the images into the runner's Docker under the stock
+      # ghcr.io/screenly/anthias-* names (image_builder's namespaces are
+      # fixed); they're re-tagged for this owner below. Nothing is pushed
+      # to the screenly namespace: there's no --push and no login yet.
+      - name: Build images
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDKIT_PROGRESS: plain
+        run: |
+          uv run python -m tools.image_builder \
+            --build-target=x86 \
+            --service=server \
+            --service=viewer
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push under this owner's namespace
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          # GHCR repository names must be lowercase.
+          owner="${REPO_OWNER,,}"
+          short_sha="${GITHUB_SHA::7}"
+          for service in server viewer; do
+            image=$(docker image ls -q \
+              --filter "reference=ghcr.io/screenly/anthias-${service}:*-x86" \
+              | head -n 1)
+            if [ -z "$image" ]; then
+              echo "::error::no anthias-${service} x86 image was built"
+              exit 1
+            fi
+            for tag in x86 "${short_sha}-x86"; do
+              docker tag "$image" "ghcr.io/${owner}/anthias-${service}:${tag}"
+              docker push "ghcr.io/${owner}/anthias-${service}:${tag}"
+            done
+          done
