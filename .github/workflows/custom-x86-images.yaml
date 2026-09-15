@@ -2,11 +2,11 @@ name: Custom x86 Images
 
 # Builds x86 anthias-server / anthias-viewer images from the pushed branch
 # and publishes them under this repository owner's GHCR namespace
-# (ghcr.io/<owner>/anthias-<service>:x86 plus an immutable
-# <short-sha>-x86 tag), so a fork's build can run on a device via
-# bin/use_custom_images.sh without compiling there. The canonical images
-# are built and published by docker-build.yaml; this workflow never runs
-# in the upstream repository.
+# (ghcr.io/<owner>/anthias-<service>:latest-x86 plus an immutable
+# <short-sha>-x86 tag), linked to this repository, so a fork's build can
+# be installed on a device with bin/install_custom.sh without compiling
+# there. The canonical images are built and published by
+# docker-build.yaml; this workflow never runs in the upstream repository.
 
 on:
   push:
@@ -78,23 +78,40 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # latest-x86 is the tag a fresh install resolves
+      # (${DOCKER_TAG}-${DEVICE_TYPE} with DOCKER_TAG=latest in
+      # docker-compose.yml.tmpl); <short-sha>-x86 pins an exact build.
       - name: Push under this owner's namespace
         env:
           REPO_OWNER: ${{ github.repository_owner }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           # GHCR repository names must be lowercase.
           owner="${REPO_OWNER,,}"
           short_sha="${GITHUB_SHA::7}"
           for service in server viewer; do
-            image=$(docker image ls -q \
+            built=$(docker image ls \
+              --format '{{.Repository}}:{{.Tag}}' \
               --filter "reference=ghcr.io/screenly/anthias-${service}:*-x86" \
               | head -n 1)
-            if [ -z "$image" ]; then
+            if [ -z "$built" ]; then
               echo "::error::no anthias-${service} x86 image was built"
               exit 1
             fi
-            for tag in x86 "${short_sha}-x86"; do
-              docker tag "$image" "ghcr.io/${owner}/anthias-${service}:${tag}"
-              docker push "ghcr.io/${owner}/anthias-${service}:${tag}"
-            done
+            target="ghcr.io/${owner}/anthias-${service}"
+            # Re-stamp org.opencontainers.image.source with this
+            # repository. GHCR links a package to the repo that label
+            # names, which lists it under the repo's Packages and makes it
+            # inherit the repo's visibility; image_builder bakes in
+            # Screenly/Anthias, which would leave these packages private
+            # and unlinked. The default (docker driver) builder is used
+            # because it sees the image loaded into the local store.
+            printf 'FROM %s\n' "$built" | docker buildx build \
+              --builder default \
+              --label "org.opencontainers.image.source=${REPO_URL}" \
+              --tag "${target}:latest-x86" \
+              --tag "${target}:${short_sha}-x86" \
+              -
+            docker push "${target}:latest-x86"
+            docker push "${target}:${short_sha}-x86"
           done

@@ -41,10 +41,11 @@
 # script, not master's. No checksum is pinned because the URL is
 # expected to move with the ref; integrity is bounded by HTTPS to
 # githubusercontent. If we ever ship signed release assets, switch
-# to fetching the signed asset by tag.
+# to fetching the signed asset by tag. anthias_upgrade_script_url (see
+# site.yml) resolves to that URL unless a fork's installer overrides it.
 - name: Install upgrade_anthias.sh from the configured branch
   ansible.builtin.get_url:
-    url: "https://raw.githubusercontent.com/Screenly/Anthias/{{ anthias_branch }}/bin/install.sh"
+    url: "{{ anthias_upgrade_script_url }}"
     dest: /usr/local/sbin/upgrade_anthias.sh
     mode: "0700"
     owner: root

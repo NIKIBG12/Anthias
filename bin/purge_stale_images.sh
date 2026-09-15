@@ -40,6 +40,14 @@ ANTHIAS_REPOS=(
     'screenly/srly-ose-*'
 )
 
+# A device running a fork's own images (bin/install_custom.sh) keeps them
+# under that prefix; upgrade_containers.sh exports it. Superseded builds
+# there are just as dead as stock ones.
+if [ -n "${ANTHIAS_IMAGE_PREFIX:-}" ] \
+    && [ "${ANTHIAS_IMAGE_PREFIX}" != 'ghcr.io/screenly/anthias' ]; then
+    ANTHIAS_REPOS+=("${ANTHIAS_IMAGE_PREFIX}-*")
+fi
+
 # The installer runs this before the anthias user's new `docker` group
 # membership is live in the current session, which is also why
 # upgrade_containers.sh drives compose through sudo.

@@ -51,8 +51,12 @@ class Harness:
     def run(
         self,
         docker_fails: bool = False,
+        image_prefix: str | None = None,
     ) -> 'subprocess.CompletedProcess[str]':
         env = os.environ.copy()
+        env.pop('ANTHIAS_IMAGE_PREFIX', None)
+        if image_prefix is not None:
+            env['ANTHIAS_IMAGE_PREFIX'] = image_prefix
         # The shims go first so `docker` and `sudo` resolve to them
         # rather than to anything the host happens to have installed.
         env['PATH'] = f'{self.bin_dir}:{env.get("PATH", "/usr/bin:/bin")}'
@@ -297,3 +301,47 @@ def test_no_containers_at_all_still_purges(harness: Harness) -> None:
 
     assert harness.removed == [f'{SERVER_REPO}:v0.19.5-pi4-64']
     assert harness.remaining_ids == set()
+
+
+CUSTOM_PREFIX = 'ghcr.io/example/anthias'
+
+
+def test_removes_superseded_custom_prefix_images(harness: Harness) -> None:
+    # A device on a fork's own images (bin/install_custom.sh) re-pulls
+    # its latest tag on every upgrade, and the stock images it switched
+    # away from are dead too.
+    harness.set_state(
+        images=[
+            image('sha256:new', f'{CUSTOM_PREFIX}-server', 'latest-x86'),
+            image('sha256:old', f'{CUSTOM_PREFIX}-server', 'abc1234-x86'),
+            image('sha256:stock', SERVER_REPO, 'latest-x86'),
+        ],
+        containers={'container-server': 'sha256:new'},
+    )
+
+    harness.run(image_prefix=CUSTOM_PREFIX)
+
+    assert sorted(harness.removed) == [
+        f'{CUSTOM_PREFIX}-server:abc1234-x86',
+        f'{SERVER_REPO}:latest-x86',
+    ]
+    assert harness.remaining_ids == {'sha256:new'}
+
+
+def test_custom_prefix_images_untouched_without_the_setting(
+    harness: Harness,
+) -> None:
+    # Without ANTHIAS_IMAGE_PREFIX the fork's repositories are someone
+    # else's images as far as the sweep can tell.
+    harness.set_state(
+        images=[
+            image('sha256:new', SERVER_REPO, 'latest-x86'),
+            image('sha256:fork', f'{CUSTOM_PREFIX}-server', 'latest-x86'),
+        ],
+        containers={'container-server': 'sha256:new'},
+    )
+
+    harness.run()
+
+    assert harness.removed == []
+    assert harness.remaining_ids == {'sha256:new', 'sha256:fork'}

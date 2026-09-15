@@ -154,6 +154,18 @@ if [[ -f /etc/anthias/proxy.env ]]; then
     set +a
 fi
 
+# Where the anthias-server/celery/viewer images come from. Stock GHCR
+# unless /etc/anthias/images.env (written by bin/install_custom.sh to run
+# a fork's own prebuilt images) overrides it; persisted there so every
+# later upgrade keeps pulling the same source. Exported for envsubst, and
+# for purge_stale_images.sh below.
+if [[ -f /etc/anthias/images.env ]]; then
+    set -a
+    . /etc/anthias/images.env
+    set +a
+fi
+export ANTHIAS_IMAGE_PREFIX="${ANTHIAS_IMAGE_PREFIX:-ghcr.io/screenly/anthias}"
+
 cat /home/${USER}/anthias/docker-compose.yml.tmpl \
     | envsubst \
     > /home/${USER}/anthias/docker-compose.yml
