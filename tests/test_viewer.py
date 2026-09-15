@@ -11,6 +11,7 @@ import pytest
 import anthias_viewer as viewer
 from anthias_server.app.models import DURATION_S_MAX
 from anthias_server.settings import settings
+from anthias_viewer.media_player import MediaPlayerProxy
 from anthias_viewer.scheduling import Scheduler
 from anthias_viewer.utils import get_skip_event
 
@@ -2071,6 +2072,72 @@ def test_handle_reload_no_op_when_dark_mode_unchanged(
         viewer._handle_reload()
     assert viewer._rotation_bounce_pending is False
     skip.set.assert_not_called()
+
+
+@pytest.fixture
+def reset_volume_state() -> Iterator[None]:
+    prior = viewer._last_applied_volume
+    try:
+        viewer._last_applied_volume = None
+        yield
+    finally:
+        viewer._last_applied_volume = prior
+
+
+def test_handle_reload_pushes_changed_volume(
+    reset_volume_state: None,
+) -> None:
+    player = mock.Mock()
+    with (
+        mock.patch.dict(settings, {'volume': 30}),
+        mock.patch.object(viewer, 'load_settings'),
+        mock.patch.object(viewer, '_maybe_reapply_rotation'),
+        mock.patch.object(viewer, '_maybe_reapply_dark_mode'),
+        mock.patch.object(viewer, '_skip_if_current_asset_inactive'),
+        mock.patch.object(MediaPlayerProxy, 'INSTANCE', player),
+    ):
+        viewer._handle_reload()
+    player.set_volume.assert_called_once_with(30)
+    assert viewer._last_applied_volume == 30
+
+
+def test_reapply_volume_no_op_when_unchanged(
+    reset_volume_state: None,
+) -> None:
+    # Unrelated `reload` traffic (asset edits) must not re-push.
+    player = mock.Mock()
+    viewer._last_applied_volume = 30
+    with (
+        mock.patch.dict(settings, {'volume': 30}),
+        mock.patch.object(MediaPlayerProxy, 'INSTANCE', player),
+    ):
+        viewer._maybe_reapply_volume()
+    player.set_volume.assert_not_called()
+
+
+def test_reapply_volume_clamps(reset_volume_state: None) -> None:
+    player = mock.Mock()
+    with (
+        mock.patch.dict(settings, {'volume': 250}),
+        mock.patch.object(MediaPlayerProxy, 'INSTANCE', player),
+    ):
+        viewer._maybe_reapply_volume()
+    player.set_volume.assert_called_once_with(100)
+
+
+def test_reapply_volume_without_player_does_not_create_one(
+    reset_volume_state: None,
+) -> None:
+    # Nothing is playing yet; building a player from the subscriber
+    # thread would race the main thread doing the same.
+    with (
+        mock.patch.dict(settings, {'volume': 30}),
+        mock.patch.object(MediaPlayerProxy, 'INSTANCE', None),
+        mock.patch.object(MediaPlayerProxy, 'get_instance') as get_instance,
+    ):
+        viewer._maybe_reapply_volume()
+    get_instance.assert_not_called()
+    assert viewer._last_applied_volume == 30
 
 
 @pytest.mark.parametrize(

@@ -58,6 +58,7 @@ from anthias_common.internal_auth import (
 )
 from anthias_common.utils import (
     clamp_screen_rotation,
+    clamp_volume,
     connect_to_redis,
     detect_screen_resolution,
     string_to_bool,
@@ -146,6 +147,11 @@ _last_applied_rotation: int = 0
 # respawned to pick up the new ANTHIAS_PREFER_DARK_MODE env var. Latched
 # at each spawn in ``load_browser``.
 _last_applied_dark_mode: bool = False
+
+# Volume last pushed to the playing clip by ``_maybe_reapply_volume``.
+# None until the first ``reload`` — every play() already carries the
+# saved volume in its options, so there is nothing to push at startup.
+_last_applied_volume: int | None = None
 
 # Cross-thread handoff for the linuxfb rotation-change path. The
 # subscriber thread (ViewerSubscriber) runs _handle_reload when a
@@ -1720,13 +1726,37 @@ def _handle_reload() -> None:
 
     Reloads settings (so a settings.patch() change takes effect
     immediately), re-applies the screen rotation if it changed
-    (issue #2856), and then signals a skip when the currently-displayed
-    asset has been deleted or deactivated — issue #2430.
+    (issue #2856), pushes a changed volume to the playing clip, and
+    then signals a skip when the currently-displayed asset has been
+    deleted or deactivated — issue #2430.
     """
     load_settings()
     _maybe_reapply_rotation()
     _maybe_reapply_dark_mode()
+    _maybe_reapply_volume()
     _skip_if_current_asset_inactive()
+
+
+def _maybe_reapply_volume() -> None:
+    """Push a changed volume setting to the clip that is playing now.
+
+    Runs on the subscriber thread. Unlike rotation / dark mode there is
+    no main-thread handoff: the main thread spends a video's whole slot
+    asleep on skip_event, and waking it would skip the asset — so the
+    player's set_volume() is called directly (a bare D-Bus call on the
+    Qt6 path; a no-op for players that pick the setting up on their next
+    play()). Reads ``MediaPlayerProxy.INSTANCE`` rather than
+    get_instance(): if no player exists yet nothing is playing, and
+    constructing one here would race the main thread doing the same.
+    """
+    global _last_applied_volume
+    volume = clamp_volume(settings['volume'])
+    if volume == _last_applied_volume:
+        return
+    _last_applied_volume = volume
+    player = MediaPlayerProxy.INSTANCE
+    if player is not None:
+        player.set_volume(volume)
 
 
 def _maybe_reapply_rotation() -> None:

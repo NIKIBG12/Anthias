@@ -96,6 +96,15 @@
         </div>
       </div>
 
+      <div class="mb-4" x-data="{ volume: {{ volume }} }">
+        <div class="flex justify-between items-center gap-4">
+          <label class="block font-semibold text-sm" for="volume">Volume</label>
+          <output class="text-sm text-fg-muted" for="volume" x-text="volume + '%'">{{ volume }}%</output>
+        </div>
+        <input type="range" class="app-range" id="volume" name="volume" min="0" max="100" step="1" value="{{ volume }}" x-model.number="volume" aria-describedby="volume_hint">
+        <p id="volume_hint" class="text-xs text-fg-muted mt-1 mb-0">How loud videos play. Handy when the display has no volume control of its own.</p>
+      </div>
+
       <div>
         {% include "_settings_toggle.html" with name="show_splash" label="Show splash screen" hint="Display the device's IP address on screen at boot." checked=show_splash %}
         {% include "_settings_toggle.html" with name="default_assets" label="Include default sample assets" hint="Auto-add the bundled sample assets to a fresh playlist." checked=default_assets %}

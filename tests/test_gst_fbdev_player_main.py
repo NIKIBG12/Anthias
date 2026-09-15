@@ -161,6 +161,15 @@ def test_main_with_audio_wires_alsasink() -> None:
     ctx.alsasink.set_property.assert_any_call(
         'device', 'sysdefault:CARD=vc4hdmi'
     )
+    # No --volume → unity gain.
+    ctx.playbin.set_property.assert_any_call('volume', 1.0)
+
+
+def test_main_with_audio_applies_volume() -> None:
+    ctx = _harness()
+    rc = _run(ctx, ARGV + AUDIO + ['--volume', '40'])
+    assert rc == 0
+    ctx.playbin.set_property.assert_any_call('volume', 0.4)
 
 
 def test_unusable_audio_device_degrades_to_video_only() -> None:

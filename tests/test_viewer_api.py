@@ -289,8 +289,25 @@ def test_settings_returns_viewer_subset() -> None:
         'show_splash',
         'screen_rotation',
         'audio_output',
+        'volume',
         'debug_logging',
     }
+
+
+@pytest.mark.django_db
+def test_settings_clamps_volume() -> None:
+    """Same read-side clamp as screen_rotation: a hand-edited conf
+    must not surface a value outside the advertised 0-100."""
+    original = anthias_settings.get('volume', 100)
+    anthias_settings['volume'] = 250
+    try:
+        response = Client().get(
+            '/api/v2/viewer/settings',
+            headers=_auth_headers(),
+        )
+    finally:
+        anthias_settings['volume'] = original
+    assert response.json()['volume'] == 100
 
 
 @pytest.mark.django_db

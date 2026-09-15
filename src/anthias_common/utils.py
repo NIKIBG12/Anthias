@@ -56,6 +56,28 @@ def clamp_screen_rotation(value: Any) -> int:
     return rotation if rotation in SCREEN_ROTATION_CHOICES else 0
 
 
+# Playback volume bounds, in percent. 100 is unity gain — what every
+# device played at before the setting existed.
+VOLUME_MIN = 0
+VOLUME_MAX = 100
+
+
+def clamp_volume(value: Any) -> int:
+    """Coerce a raw volume setting to an int percent in 0-100.
+
+    Out-of-range numbers clamp to the nearest bound. Anything that
+    doesn't parse as an int falls back to VOLUME_MAX (the default)
+    rather than silently muting playback. Shared by the form save, the
+    API, and the viewer's player paths so the allowed range can't drift
+    between them.
+    """
+    try:
+        volume = int(value)
+    except (TypeError, ValueError):
+        return VOLUME_MAX
+    return max(VOLUME_MIN, min(VOLUME_MAX, volume))
+
+
 # Where chunked browser uploads stage their partial file, under the
 # asset dir. Shared with the cleanup sweep and the backup filter so the
 # name cannot drift from the code writing into it.

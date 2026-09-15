@@ -18,7 +18,11 @@ from rest_framework.serializers import (
     TimeField,
 )
 
-from anthias_common.utils import SCREEN_ROTATION_CHOICES
+from anthias_common.utils import (
+    SCREEN_ROTATION_CHOICES,
+    VOLUME_MAX,
+    VOLUME_MIN,
+)
 from anthias_server.api.serializers import UpdateAssetSerializer
 from anthias_server.api.serializers.mixins import CreateAssetSerializerMixin
 from anthias_server.app.models import (
@@ -420,6 +424,7 @@ class UpdateAssetSerializerV2(UpdateAssetSerializer):
 class DeviceSettingsSerializerV2(Serializer[Any]):
     player_name = CharField()
     audio_output = CharField()
+    volume = IntegerField(min_value=VOLUME_MIN, max_value=VOLUME_MAX)
     default_duration = IntegerField()
     default_streaming_duration = IntegerField()
     date_format = CharField()
@@ -450,6 +455,11 @@ class DeviceSettingsSerializerV2(Serializer[Any]):
 class UpdateDeviceSettingsSerializerV2(Serializer[Any]):
     player_name = CharField(required=False, allow_blank=True)
     audio_output = CharField(required=False)
+    # Rejected (400) rather than clamped: an API client sending 150
+    # has made a mistake and should be told.
+    volume = IntegerField(
+        required=False, min_value=VOLUME_MIN, max_value=VOLUME_MAX
+    )
     # Bounded like Asset.duration — these defaults get copied onto new
     # asset rows (CreateAssetSerializerMixin, HTML add-asset path), so
     # a poisoned default would reach the viewer's Event.wait the same
@@ -562,6 +572,7 @@ class ViewerSettingsSerializerV2(Serializer[Any]):
     show_splash = BooleanField()
     screen_rotation = ChoiceField(choices=SCREEN_ROTATION_CHOICES)
     audio_output = CharField()
+    volume = IntegerField(min_value=VOLUME_MIN, max_value=VOLUME_MAX)
     debug_logging = BooleanField()
 
 

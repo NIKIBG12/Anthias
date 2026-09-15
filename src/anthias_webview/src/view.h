@@ -56,6 +56,8 @@ public:
     // playback surface and its EOF signal are Qt6-only.
     void playVideo(const QString &uri, const QVariantMap &options);
     void stopVideo();
+    // Forwards a live volume change (percent) to VideoView.
+    void setVolume(int percent);
 
 signals:
     void videoEnded();

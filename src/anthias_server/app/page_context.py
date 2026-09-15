@@ -26,6 +26,7 @@ from anthias_common import (
 from anthias_common.board import LOW_RAM_THRESHOLD_KB
 from anthias_common.utils import (
     clamp_screen_rotation,
+    clamp_volume,
     connect_to_redis,
     get_node_mac_address,
     is_balena_app,
@@ -588,6 +589,9 @@ def device_settings() -> dict[str, Any]:
         'default_duration': settings['default_duration'],
         'default_streaming_duration': settings['default_streaming_duration'],
         'audio_output': settings['audio_output'],
+        # Clamped for the same reason as screen_rotation below: a
+        # hand-edited value must not render an out-of-range slider.
+        'volume': clamp_volume(settings['volume']),
         'date_format': settings['date_format'],
         'timezone': settings['timezone'],
         'auth_backend': settings['auth_backend'],

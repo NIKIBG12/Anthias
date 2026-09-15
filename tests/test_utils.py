@@ -10,6 +10,7 @@ import sh
 
 from anthias_common import utils
 from anthias_common.utils import (
+    clamp_volume,
     generate_perfect_paper_password,
     handler,
     is_balena_app,
@@ -27,6 +28,25 @@ from anthias_common.utils import (
 def test_unicode_correctness_in_bottle_templates() -> None:
     assert template_handle_unicode('hello') == 'hello'
     assert template_handle_unicode('Привет') == 'Привет'
+
+
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        (0, 0),
+        (55, 55),
+        (100, 100),
+        ('40', 40),
+        (150, 100),
+        (-5, 0),
+        # Garbage falls back to full volume, never to silent.
+        ('loud', 100),
+        (None, 100),
+        ('', 100),
+    ],
+)
+def test_clamp_volume(raw: Any, expected: int) -> None:
+    assert clamp_volume(raw) == expected
 
 
 def test_json_tz() -> None:

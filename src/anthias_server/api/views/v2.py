@@ -28,6 +28,7 @@ from anthias_common import (
 from anthias_common.internal_auth import is_internal_request
 from anthias_common.utils import (
     clamp_screen_rotation,
+    clamp_volume,
     connect_to_redis,
     get_balena_device_info,
     get_node_ip,
@@ -574,6 +575,9 @@ class DeviceSettingsViewV2(APIView):
             {
                 'player_name': settings['player_name'],
                 'audio_output': settings['audio_output'],
+                # Clamped on read like screen_rotation: the schema
+                # advertises 0-100, a hand-edited conf might not.
+                'volume': clamp_volume(settings['volume']),
                 'default_duration': int(settings['default_duration']),
                 'default_streaming_duration': int(
                     settings['default_streaming_duration']
@@ -661,6 +665,8 @@ class DeviceSettingsViewV2(APIView):
                 ]
             if 'audio_output' in data:
                 settings['audio_output'] = data['audio_output']
+            if 'volume' in data:
+                settings['volume'] = data['volume']
             if 'date_format' in data:
                 settings['date_format'] = data['date_format']
             if 'timezone' in data:
@@ -886,6 +892,7 @@ class ViewerSettingsViewV2(APIView):
                     settings['screen_rotation']
                 ),
                 'audio_output': settings['audio_output'],
+                'volume': clamp_volume(settings['volume']),
                 'debug_logging': settings['debug_logging'],
             }
         )

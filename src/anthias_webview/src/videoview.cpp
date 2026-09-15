@@ -317,6 +317,15 @@ void VideoView::play(const QString& uri, const QVariantMap& options)
         audioOutput->setDevice(device);
         summary << QStringLiteral("audio-device=%1").arg(alsaSpec);
     }
+    if (options.contains(QStringLiteral("volume"))) {
+        bool ok = false;
+        const int percent =
+            options.value(QStringLiteral("volume")).toInt(&ok);
+        if (ok) {
+            setVolume(percent);
+            summary << QStringLiteral("volume=%1").arg(volumePercent);
+        }
+    }
 
     // Optional per-item rotation of the VideoOutput item. No board
     // sends ``video-rotate`` any more: every platform now rotates the
@@ -396,6 +405,28 @@ void VideoView::play(const QString& uri, const QVariantMap& options)
     if (statsTimer) {
         statsTimer->start();
     }
+}
+
+void VideoView::setVolume(int percent)
+{
+    volumePercent = qBound(0, percent, 100);
+    const float gain = volumePercent / 100.0f;
+    if (audioOutput) {
+        audioOutput->setVolume(gain);
+    }
+#ifdef ANTHIAS_GSTREAMER
+    // The GStreamer path plays audio in its own pipeline (see
+    // gstStartAudio), which never touches audioOutput.
+    if (gstAudioPipeline) {
+        GstElement* volume = gst_bin_get_by_name(
+            GST_BIN(gstAudioPipeline), "anthias_volume");
+        if (volume) {
+            g_object_set(volume, "volume", static_cast<gdouble>(gain),
+                         nullptr);
+            gst_object_unref(volume);
+        }
+    }
+#endif
 }
 
 void VideoView::stop()
@@ -1486,11 +1517,16 @@ void VideoView::gstStartAudio(const QString& location, const QString& alsaDev)
     // Pin the AUDIO pad explicitly: qtdemux exposes both a video and an
     // audio pad, and a bare ``qtdemux ! decodebin`` links whichever appears
     // first (often video → audioconvert then can't negotiate and no sound).
+    // The named ``volume`` element carries the operator's volume setting;
+    // setVolume() retargets it live by name. QString::number formats with
+    // a '.' decimal point regardless of locale, which gst_parse needs.
     const QString audioDesc =
         QStringLiteral(
             "filesrc location=\"%1\" ! qtdemux name=ademux ademux.audio_0 ! "
-            "queue ! decodebin ! audioconvert ! audioresample ! %2%3")
-            .arg(loc, audioSink, audioDeviceProp);
+            "queue ! decodebin ! audioconvert ! audioresample ! "
+            "volume name=anthias_volume volume=%4 ! %2%3")
+            .arg(loc, audioSink, audioDeviceProp,
+                 QString::number(volumePercent / 100.0, 'f', 2));
 
     GError* error = nullptr;
     gstAudioPipeline =

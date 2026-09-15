@@ -1282,6 +1282,22 @@ label { text-align: left; }
     background-position: right 0.15rem center;
   }
 }
+// Native range slider (Settings → Volume). accent-color tints the
+// track fill and thumb with the same token as a checked .app-check-input,
+// so it follows the theme without restyling each engine's pseudo-elements.
+.app-range {
+  display: block;
+  width: 100%;
+  margin: calc(var(--spacing) * 2) 0 0;
+  accent-color: var(--color-link);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+    border-radius: var(--radius-pill);
+    box-shadow: 0 0 0 var(--ring-width) var(--color-focus-ring);
+  }
+}
 
 .app-form-grid {
   display: grid;

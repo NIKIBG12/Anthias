@@ -176,6 +176,41 @@ def test_play_uses_local_audio_device_when_configured(
     assert options['audio-device'] == 'alsa/plughw:CARD=Headphones'
 
 
+@pytest.mark.parametrize(('saved', 'sent'), [(35, 35), (250, 100), (-3, 0)])
+def test_play_sends_clamped_volume(
+    mpv: _MPVFixtures, saved: int, sent: int
+) -> None:
+    # Every play carries the volume, so a freshly (re)spawned webview
+    # starts at the saved level without waiting for a live push.
+    table = {'audio_output': 'hdmi', 'volume': saved}
+    mpv.mock_settings.__getitem__.side_effect = lambda key: table[key]
+    mpv.player.set_asset('file:///test/video.mp4', 30)
+    mpv.player.play()
+
+    assert _last_play_options(mpv.mock_bus)['volume'] == sent
+
+
+def test_set_volume_calls_bus_directly(mpv: _MPVFixtures) -> None:
+    # Called from the subscriber thread: must not go through the
+    # respawn-on-death wrapper, which belongs to the asset_loop thread.
+    wrapper = MagicMock()
+    with patch('anthias_viewer.media_player._send_to_webview', wrapper):
+        mpv.player.set_volume(40)
+    mpv.mock_bus.setVolume.assert_called_once_with(40)
+    wrapper.assert_not_called()
+
+
+def test_set_volume_without_bus_is_noop() -> None:
+    with patch('anthias_viewer.media_player._browser_bus', None):
+        MPVMediaPlayer().set_volume(40)  # must not raise
+
+
+def test_set_volume_swallows_bus_errors(mpv: _MPVFixtures) -> None:
+    # e.g. an older webview without the setVolume slot.
+    mpv.mock_bus.setVolume.side_effect = Exception('UnknownMethod')
+    mpv.player.set_volume(40)  # must not raise
+
+
 def test_play_reloads_settings_each_call(mpv: _MPVFixtures) -> None:
     mpv.player.set_asset('file:///test/video.mp4', 30)
     mpv.player.play()
@@ -1004,6 +1039,24 @@ def test_build_command_passes_rotation(gstfb: _GstFixtures) -> None:
     assert _flag(cmd, '--rotation') == '90'
 
 
+@pytest.mark.parametrize(('saved', 'sent'), [(30, '30'), (250, '100')])
+def test_build_command_passes_clamped_volume(
+    gstfb: _GstFixtures, saved: int, sent: str
+) -> None:
+    gstfb.player.uri = 'file:///test/video.mp4'
+    gstfb.mock_settings.__getitem__.return_value = saved
+    cmd = gstfb.player._build_command()
+    assert _flag(cmd, '--volume') == sent
+
+
+def test_gst_set_volume_is_noop(gstfb: _GstFixtures) -> None:
+    # The helper process has no live channel; the new volume lands on
+    # the next clip via _build_command.
+    gstfb.player._proc = None
+    gstfb.player.set_volume(40)
+    assert gstfb.player._proc is None
+
+
 def test_play_spawns_player_and_is_playing(gstfb: _GstFixtures) -> None:
     gstfb.player.uri = 'file:///test/video.mp4'
     fake_proc = MagicMock()
@@ -1227,7 +1280,11 @@ def _rotated_mpv_settings(rotation: int) -> Any:
     """Build a settings mock that answers `audio_output` like the
     default fixture but also surfaces `screen_rotation`. Used by the
     mpv rotation tests below."""
-    table = {'audio_output': 'hdmi', 'screen_rotation': rotation}
+    table = {
+        'audio_output': 'hdmi',
+        'screen_rotation': rotation,
+        'volume': 100,
+    }
     mock = MagicMock()
     mock.__getitem__.side_effect = lambda key: table[key]
     return mock

@@ -79,6 +79,11 @@ DEFAULTS = {
         'shuffle_playlist': False,
         'verify_ssl': True,
         'default_assets': False,
+        # Playback volume in percent (0-100) for displays with no
+        # volume control of their own. Read sites go through
+        # clamp_volume(), so a hand-edited out-of-range value can't
+        # reach the player.
+        'volume': 100,
     },
 }
 CONFIGURABLE_SETTINGS = DEFAULTS['viewer'].copy()

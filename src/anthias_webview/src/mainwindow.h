@@ -46,6 +46,12 @@ class MainWindow : public QMainWindow
         // compiled out below the Qt-version gate.
         void playVideo(const QString &uri, const QVariantMap &options);
         void stopVideo();
+        // Live playback volume in percent (clamped to 0-100). Pushed
+        // by the Python viewer on ``reload`` so a Settings change lands
+        // mid-clip; every playVideo also carries ``volume`` in its
+        // options, so a respawned webview picks the setting back up.
+        // No default argument — see loadPage above.
+        void setVolume(int percent);
 
     signals:
         // Re-emitted from VideoView::videoEnded — exported over

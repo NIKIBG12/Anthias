@@ -1089,6 +1089,13 @@ void View::stopVideo()
     }
 }
 
+void View::setVolume(int percent)
+{
+    if (videoView) {
+        videoView->setVolume(percent);
+    }
+}
+
 void View::hideVideoSurface()
 {
     if (!videoView || !videoView->isVisible()) {

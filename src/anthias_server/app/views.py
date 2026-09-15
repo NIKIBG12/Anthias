@@ -37,6 +37,7 @@ from anthias_common.utils import (
     DISK_FULL_ERROR,
     STAGED_UPLOAD_DIR,
     clamp_screen_rotation,
+    clamp_volume,
     connect_to_redis,
     is_disk_full,
 )
@@ -1942,6 +1943,11 @@ def settings_save(request: HttpRequest) -> HttpResponse:
             request.POST.get('default_streaming_duration') or 0
         )
         settings['audio_output'] = request.POST.get('audio_output', 'hdmi')
+        # Absent (a page rendered before the slider existed) keeps the
+        # saved value rather than snapping back to full volume.
+        settings['volume'] = clamp_volume(
+            request.POST.get('volume', settings['volume'])
+        )
         settings['date_format'] = request.POST.get('date_format', 'mm/dd/yyyy')
         settings['timezone'] = tz_value
 

@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 from anthias_common.board import ARM64_DEVICE_TYPES
 from anthias_common.device_helper import get_device_type
-from anthias_common.utils import clamp_screen_rotation
+from anthias_common.utils import clamp_screen_rotation, clamp_volume
 from anthias_server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -530,6 +530,14 @@ class MediaPlayer:
     def is_playing(self) -> bool:
         raise NotImplementedError
 
+    def set_volume(self, percent: int) -> None:
+        """Apply a volume change to the clip that is already playing.
+
+        No-op by default: a player that can't adjust a running clip
+        picks the new setting up on its next play().
+        """
+        del percent
+
 
 def _marshal_dbus_options(options: dict[str, Any]) -> dict[str, Any]:
     """Wrap each value as a ``GLib.Variant`` for pydbus.
@@ -568,12 +576,14 @@ def _build_video_options(uri: str) -> dict[str, Any]:
     ``docker/_rpt1-ffmpeg-pin.j2`` carry ``--enable-v4l2-request``
     / ``--enable-v4l2-m2m``, so libavcodec engages the Pi-family
     hardware decoders automatically — the application no longer
-    dispatches per-codec hwdec. The options dict shrinks to a single
-    entry:
+    dispatches per-codec hwdec. The options dict carries:
 
     * ``audio-device`` — ALSA device name. C++ side strips the
       ``alsa/`` prefix and extracts the ``CARD=<name>`` segment
       to look up the matching ``QAudioDevice``.
+    * ``volume`` — the operator's volume setting, int percent 0-100.
+      Sent with every play so a freshly (re)spawned webview starts at
+      the saved level; live changes go through ``set_volume``.
 
     No ``video-rotate`` is sent: every Qt6 board now rotates at the
     platform/compositor layer, so a per-video rotate option would
@@ -591,6 +601,7 @@ def _build_video_options(uri: str) -> dict[str, Any]:
 
     options: dict[str, Any] = {
         'audio-device': f'alsa/{get_alsa_audio_device()}',
+        'volume': clamp_volume(settings['volume']),
     }
 
     # No per-video rotation here. Every Qt6 board rotates at the platform
@@ -669,6 +680,21 @@ class MPVMediaPlayer(MediaPlayer):
             _call_webview(lambda: bus.stopVideo())
         except Exception:
             logger.exception('MPVMediaPlayer.stop failed')
+
+    def set_volume(self, percent: int) -> None:
+        # Called from the subscriber thread on ``reload``, so it goes
+        # straight to the bus rather than through _call_webview: the
+        # respawn-on-death recovery belongs to the asset_loop thread, and
+        # a dead webview needs no push anyway — the next play() carries
+        # the volume in its options. Warning, not exception: an older
+        # webview without the setVolume slot lands here too.
+        bus = get_browser_bus()
+        if bus is None:
+            return
+        try:
+            bus.setVolume(percent)
+        except Exception as exc:
+            logger.warning('MPVMediaPlayer.set_volume failed: %s', exc)
 
     def is_playing(self) -> bool:
         return self._playing
@@ -824,6 +850,8 @@ class GstFbdevMediaPlayer(MediaPlayer):
             str(_screen_rotation()),
             '--audio-device',
             get_alsa_audio_device(),
+            '--volume',
+            str(clamp_volume(settings['volume'])),
         ]
 
     def play(self) -> None:

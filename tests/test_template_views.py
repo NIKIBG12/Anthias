@@ -229,6 +229,7 @@ def test_page_context_device_settings_keys() -> None:
         'default_duration',
         'default_streaming_duration',
         'audio_output',
+        'volume',
         'date_format',
         'auth_backend',
         'show_splash',
@@ -914,6 +915,85 @@ def test_settings_save_screen_rotation(
         )
     assert response.status_code in (200, 302)
     assert settings['screen_rotation'] == persisted
+
+
+_VOLUME_FORM = {
+    'player_name': 'Test',
+    'default_duration': '10',
+    'default_streaming_duration': '300',
+    'audio_output': 'hdmi',
+    'date_format': 'mm/dd/yyyy',
+    'auth_backend': '',
+}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'posted, persisted',
+    [
+        ('35', 35),
+        ('0', 0),
+        # Out-of-range clamps to the nearest bound; garbage falls back
+        # to full volume rather than silently muting playback.
+        ('150', 100),
+        ('-5', 0),
+        ('loud', 100),
+    ],
+)
+def test_settings_save_volume(
+    client: Client, posted: str, persisted: int, _isolated_settings_conf: Any
+) -> None:
+    from anthias_server.settings import settings
+
+    with mock.patch(
+        'anthias_server.settings.ViewerPublisher.send_to_viewer',
+        return_value=None,
+    ):
+        response = client.post(
+            reverse('anthias_app:settings_save'),
+            data={**_VOLUME_FORM, 'volume': posted},
+        )
+    assert response.status_code in (200, 302)
+    assert settings['volume'] == persisted
+
+
+@pytest.mark.django_db
+def test_settings_save_without_volume_keeps_saved_value(
+    client: Client, _isolated_settings_conf: Any
+) -> None:
+    """A page rendered before the slider existed posts no ``volume``;
+    that must keep the saved level, not snap back to full volume."""
+    from anthias_server.settings import settings
+
+    # Persisted, not just in memory: settings_save reloads from disk.
+    settings['volume'] = 30
+    settings.save()
+    with mock.patch(
+        'anthias_server.settings.ViewerPublisher.send_to_viewer',
+        return_value=None,
+    ):
+        client.post(reverse('anthias_app:settings_save'), data=_VOLUME_FORM)
+    assert settings['volume'] == 30
+
+
+@pytest.mark.django_db
+def test_settings_page_renders_volume_slider(
+    client: Client, _isolated_settings_conf: Any
+) -> None:
+    from anthias_server.settings import settings
+
+    settings['volume'] = 45
+    settings.save()
+    with mock.patch(
+        'anthias_server.app.page_context.device_helper.parse_cpu_info',
+        return_value={},
+    ):
+        response = client.get(reverse('anthias_app:settings'))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert 'type="range"' in body
+    assert 'name="volume"' in body
+    assert 'value="45"' in body
 
 
 @pytest.mark.django_db

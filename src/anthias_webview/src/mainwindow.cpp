@@ -51,4 +51,9 @@ void MainWindow::stopVideo()
 {
     view->stopVideo();
 }
+
+void MainWindow::setVolume(int percent)
+{
+    view->setVolume(percent);
+}
 #endif

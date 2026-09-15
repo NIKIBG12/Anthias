@@ -19,6 +19,7 @@ from anthias_viewer.gst_fbdev_player import (
     clear_framebuffer,
     compute_fit_dims,
     parse_args,
+    volume_gain,
 )
 
 logging.disable(logging.CRITICAL)
@@ -98,6 +99,18 @@ def _args(rotation: int = 0) -> Any:
             'sysdefault:CARD=vc4hdmi',
         ]
     )
+
+
+def test_volume_defaults_to_full() -> None:
+    assert _args().volume == 100
+
+
+@pytest.mark.parametrize(
+    ('percent', 'gain'),
+    [(100, 1.0), (50, 0.5), (0, 0.0), (250, 1.0), (-10, 0.0)],
+)
+def test_volume_gain_maps_and_clamps(percent: int, gain: float) -> None:
+    assert volume_gain(percent) == gain
 
 
 def test_sink_description_is_hw_pipeline_with_rate_cap() -> None:

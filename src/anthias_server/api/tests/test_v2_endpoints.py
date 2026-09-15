@@ -39,6 +39,7 @@ def test_get_device_settings(
     settings_mock.__getitem__.side_effect = lambda key: {
         'player_name': 'Test Player',
         'audio_output': 'hdmi',
+        'volume': 40,
         'default_duration': '15',
         'default_streaming_duration': '100',
         'date_format': 'YYYY-MM-DD',
@@ -65,6 +66,7 @@ def test_get_device_settings(
     expected_values = {
         'player_name': 'Test Player',
         'audio_output': 'hdmi',
+        'volume': 40,
         'default_duration': 15,
         'default_streaming_duration': 100,
         'date_format': 'YYYY-MM-DD',
@@ -170,6 +172,53 @@ def test_patch_device_settings_success(
     assert settings_mock.__setitem__.call_count == 5
 
     publisher_instance.send_to_viewer.assert_called_once_with('reload')
+
+
+@pytest.mark.django_db
+@mock.patch('anthias_server.api.views.v2.settings')
+@mock.patch('anthias_server.api.views.v2.ViewerPublisher')
+def test_patch_device_settings_volume(
+    publisher_mock: Any,
+    settings_mock: Any,
+    api_client: APIClient,
+    device_settings_url: str,
+) -> None:
+    """The saved volume reaches the viewer through the same ``reload``
+    every settings change sends — no volume-specific message."""
+    settings_mock.__getitem__.side_effect = lambda key: {
+        'auth_backend': '',
+    }[key]
+    settings_mock.__setitem__ = mock.MagicMock()
+    publisher_instance = mock.MagicMock()
+    publisher_mock.get_instance.return_value = publisher_instance
+
+    response = api_client.patch(
+        device_settings_url, data={'volume': 35}, format='json'
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    settings_mock.__setitem__.assert_any_call('volume', 35)
+    publisher_instance.send_to_viewer.assert_called_once_with('reload')
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('volume', [-1, 101, 'loud'])
+@mock.patch('anthias_server.api.views.v2.settings')
+def test_patch_device_settings_rejects_bad_volume(
+    settings_mock: Any,
+    volume: Any,
+    api_client: APIClient,
+    device_settings_url: str,
+) -> None:
+    settings_mock.save = mock.MagicMock()
+
+    response = api_client.patch(
+        device_settings_url, data={'volume': volume}, format='json'
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert 'volume' in response.data
+    settings_mock.save.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -361,6 +410,7 @@ def test_disable_basic_auth(
         'player_name': 'Test Player',
         'auth_backend': 'auth_basic',
         'audio_output': 'hdmi',
+        'volume': 100,
         'default_duration': '15',
         'default_streaming_duration': '100',
         'date_format': 'YYYY-MM-DD',

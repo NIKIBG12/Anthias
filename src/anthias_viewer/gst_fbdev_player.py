@@ -208,8 +208,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=sorted({0, ISP_FLIP_ROTATION, *GST_VIDEOFLIP_METHODS}),
     )
     parser.add_argument('--audio-device', default='')
+    # Percent, clamped in build_and_start rather than rejected here: an
+    # argparse error would exit the helper and black-screen the slot
+    # over a volume value.
+    parser.add_argument('--volume', type=int, default=100)
     parser.add_argument('--fb-device', default=FB_DEVICE)
     return parser.parse_args(argv)
+
+
+def volume_gain(percent: int) -> float:
+    """Map a 0-100 volume percent onto playbin's linear ``volume``
+    property (1.0 = unity gain), clamping out-of-range input. Kept
+    local rather than importing anthias_common: this helper runs by
+    path and must not pull the anthias packages into the child."""
+    return max(0, min(100, percent)) / 100.0
 
 
 def build_sink_description(args: argparse.Namespace) -> str:
@@ -373,6 +385,9 @@ def main(argv: list[str] | None = None) -> int:
             if audio_sink is not None:
                 audio_sink.set_property('device', args.audio_device)
                 playbin.set_property('audio-sink', audio_sink)
+            # playbin implements GstStreamVolume, so the gain is applied
+            # in-pipeline — alsasink itself has no volume property.
+            playbin.set_property('volume', volume_gain(args.volume))
         else:
             # Clear GST_PLAY_FLAG_AUDIO (0x2): no audio decode, no
             # audio sink. A broken audio branch — missing ALSA card

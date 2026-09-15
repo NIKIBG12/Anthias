@@ -84,6 +84,9 @@ public:
     //   * ``audio-device`` — ALSA device name (the same string the
     //     mpv era used; QAudioDevice consumes the ``CARD=<name>``
     //     portion).
+    //   * ``volume`` — int percent (0-100), applied via setVolume()
+    //     before playback starts so the first audible frame is at the
+    //     operator's level.
     //   * ``video-rotate`` — int as string (0/90/180/270). Defensive
     //     no-op: no board sends it any more (every platform rotates
     //     the whole screen at the compositor / QPA layer). Applied
@@ -100,6 +103,13 @@ public:
     // the next ``play()`` is a cheap setSource + play, not a
     // pipeline rebuild.
     void stop();
+
+    // Set the playback volume in percent (clamped to 0-100). Applies
+    // immediately to the clip that is playing and sticks for later
+    // plays. Covers both audio paths: QAudioOutput for QMediaPlayer,
+    // and the ``volume`` element of the GStreamer audio pipeline on
+    // ANTHIAS_GSTREAMER builds (pi3-64).
+    void setVolume(int percent);
 
 signals:
     // Fires on ``QMediaPlayer::EndOfMedia``. Re-emitted by
@@ -308,6 +318,9 @@ private:
 
     QMediaPlayer* player = nullptr;
     QAudioOutput* audioOutput = nullptr;
+    // Last volume set via setVolume(), in percent. Kept so the
+    // GStreamer audio pipeline, rebuilt per clip, starts at it too.
+    int volumePercent = 100;
     QQuickWidget* quickWidget = nullptr;
     // The QML VideoOutput item (owned by the QQuickWidget's root
     // object) and its sink. Both are guaranteed non-null past the
